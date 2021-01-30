@@ -1,10 +1,12 @@
 package conda
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
 
+	"github.com/itchyny/gojq"
 	"github.com/jeewangue/oss-licenses/internal/shell"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
@@ -15,16 +17,25 @@ func GetCondaPkgLicenses(c *cli.Context) error {
 
 	infoCommand := &shell.Command{
 		ShellToUse: "bash",
-		Command:    "conda info --json | jq -r '.conda_prefix'",
+		Command:    "conda info --json",
 	}
-	condaPrefix, _, _ := infoCommand.Run()
-	condaPrefix = strings.TrimSpace(condaPrefix)
-	condaEnvPath := condaPrefix
+	infoOutStr, _, _ := infoCommand.Run()
+	infoOutStr = strings.TrimSpace(infoOutStr)
+
+	infoOutJSON := make(map[string]interface{})
+	_ = json.Unmarshal([]byte(infoOutStr), &infoOutJSON)
+
+	query, _ := gojq.Parse(".conda_prefix")
+	v, _ := query.Run(infoOutJSON).Next()
+
+	infoOutStr = v.(string)
+
+	condaEnvPath := infoOutStr
 	if EnvName != "base" {
-		condaEnvPath = path.Join(condaPrefix, "envs", EnvName)
+		condaEnvPath = path.Join(infoOutStr, "envs", EnvName)
 	}
 	log.WithFields(log.Fields{
-		"conda_prefix": condaPrefix,
+		"conda_prefix": infoOutStr,
 		"env_name":     EnvName,
 		"env_path":     condaEnvPath,
 	}).Infof("conda environment")
